@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 echo ================================
 echo   编译 Mini Text Search Engine
 echo ================================
@@ -7,7 +8,8 @@ if not exist bin mkdir bin
 
 echo.
 echo [1/2] 编译 module1.dll ...
-gcc -shared -o bin\module1.dll src\module1_preprocess\preprocess.c -I include
+gcc -shared -o bin\module1.dll src\module1_preprocess\preprocess.c -I include -lcomdlg32
+
 if %errorlevel% neq 0 (
     echo 编译 DLL 失败！
     pause
