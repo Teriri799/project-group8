@@ -7,9 +7,8 @@ echo ================================
 if not exist bin mkdir bin
 
 echo.
-echo [1/2] 编译 module1.dll ...
+echo [1/1] 编译 module1.dll ...
 gcc -shared -o bin\module1.dll src\module1_preprocess\preprocess.c -I include -lcomdlg32
-
 if %errorlevel% neq 0 (
     echo 编译 DLL 失败！
     pause
@@ -18,8 +17,8 @@ if %errorlevel% neq 0 (
 echo  module1.dll 编译成功！
 
 echo.
-echo [2/2] 编译 main.exe ...
-gcc -o bin\main.exe src\main.c
+echo [主程序] 编译 main.exe ...
+gcc -o bin\main.exe src\main.c -I include
 if %errorlevel% neq 0 (
     echo 编译主程序失败！
     pause

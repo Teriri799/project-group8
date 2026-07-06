@@ -5,14 +5,14 @@
 #include <string.h>
 #include <ctype.h>
 #include <windows.h>
-#include "../../include/module1_preprocess.h"
+#include "../../include/module1.h"
 
 // ==================== 配置项 ====================
 static int g_enable_stopword = 1;
 static int g_min_word_length = 2;
 static const int MAX_CHINESE_WORD_LEN = 6;
 
-// ==================== 中文词典（500+常用中文词汇） ====================
+// ==================== 中文词典 ====================
 static const char* chinese_dict[] = {
     "今天", "明天", "昨天", "天气", "我们", "他们", "你们", "她们", "它们",
     "自己", "别人", "什么", "怎么", "这么", "那么", "为什么", "如何",
@@ -83,9 +83,9 @@ static const char* chinese_dict[] = {
     "人民", "民族", "国家", "社会", "世界", "全球", "国际",
 };
 static const int dict_size = sizeof(chinese_dict) / sizeof(chinese_dict[0]);
-// ==================== 英中文停用词表 ====================
+
+// ==================== 停用词表 ====================
 static const char* stop_words[] = {
-    // === 英文停用词 ===
     "a", "an", "the", "and", "or", "but", "if", "because", "as", "until",
     "while", "of", "at", "by", "for", "with", "about", "against", "between",
     "into", "through", "during", "before", "after", "above", "below", "to",
@@ -101,7 +101,6 @@ static const char* stop_words[] = {
     "will", "can", "me", "my", "myself", "we", "our", "ours", "ourselves",
     "you", "your", "yours", "yourself", "yourselves", "he", "him", "his",
     "himself", "she", "her", "hers", "herself",
-    // === 中文停用词 ===
     "的", "了", "是", "在", "我", "有", "和", "就", "不", "人",
     "都", "一", "个", "上", "也", "很", "到", "说", "要", "去",
     "你", "会", "着", "看", "好", "这", "他", "她", "它", "们",
@@ -139,22 +138,6 @@ static int is_chinese_char(const unsigned char* s) {
     return 0;
 }
 
-static int is_chinese_punct(const unsigned char* s) {
-    if (s[0] >= 0xE3 && s[0] <= 0xE9) {
-        unsigned int code = ((s[0] & 0x0F) << 12) | ((s[1] & 0x3F) << 6) | (s[2] & 0x3F);
-        if (code >= 0x3000 && code <= 0x303F) return 1;
-        if (code >= 0xFF00 && code <= 0xFFEF) return 1;
-        if (code == 0x3001 || code == 0x3002) return 1;
-        if (code == 0xFF0C || code == 0xFF1B || code == 0xFF1A) return 1;
-        if (code == 0xFF01 || code == 0xFF1F) return 1;
-        if (code == 0x201C || code == 0x201D || code == 0x2018 || code == 0x2019) return 1;
-        if (code == 0x300A || code == 0x300B || code == 0x3008 || code == 0x3009) return 1;
-        if (code == 0x3010 || code == 0x3011) return 1;
-        if (code == 0xFF08 || code == 0xFF09) return 1;
-    }
-    return 0;
-}
-
 static int is_english_letter(unsigned char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
@@ -164,10 +147,9 @@ static int is_english_word_char(unsigned char c) {
 }
 
 static char* read_file_content(const char* filepath) {
-    // 将 UTF-8 路径转换为宽字符（Windows 宽字符路径）
     wchar_t wpath[MAX_PATH];
     MultiByteToWideChar(CP_UTF8, 0, filepath, -1, wpath, MAX_PATH);
-    
+
     FILE* f = _wfopen(wpath, L"rb");
     if (!f) return NULL;
 
@@ -182,7 +164,6 @@ static char* read_file_content(const char* filepath) {
     content[size] = '\0';
     fclose(f);
 
-    // 跳过 UTF-8 BOM
     if (size >= 3 && (unsigned char)content[0] == 0xEF
                   && (unsigned char)content[1] == 0xBB
                   && (unsigned char)content[2] == 0xBF) {
@@ -190,7 +171,6 @@ static char* read_file_content(const char* filepath) {
     }
     return content;
 }
-
 
 static const char* extract_filename(const char* path) {
     const char* p = strrchr(path, '\\');
@@ -234,10 +214,7 @@ static int segment_chinese(const char* chinese_text, char*** out_tokens) {
 
             int found = 0;
             for (int i = 0; i < dict_size; i++) {
-                if (strcmp(candidate, chinese_dict[i]) == 0) {
-                    found = 1;
-                    break;
-                }
+                if (strcmp(candidate, chinese_dict[i]) == 0) { found = 1; break; }
             }
 
             if (found || word_len == 1) {
@@ -245,16 +222,13 @@ static int segment_chinese(const char* chinese_text, char*** out_tokens) {
                 int pass = 1;
                 if (is_stopword(word)) pass = 0;
                 if (pass && word_len < g_min_word_length) pass = 0;
-
                 if (pass) {
                     if (token_count >= capacity) {
                         capacity *= 2;
                         tokens = (char**)realloc(tokens, capacity * sizeof(char*));
                     }
                     tokens[token_count++] = word;
-                } else {
-                    free(word);
-                }
+                } else { free(word); }
                 pos += bytes_needed;
                 matched = 1;
                 break;
@@ -262,15 +236,14 @@ static int segment_chinese(const char* chinese_text, char*** out_tokens) {
         }
         if (!matched) pos += 3;
     }
-
     *out_tokens = tokens;
     return token_count;
 }
 
 // ==================== 核心清洗函数 ====================
-static PreprocessResult* clean_text(const char* text, const char* source_name) {
-    PreprocessResult* result = (PreprocessResult*)malloc(sizeof(PreprocessResult));
-    memset(result, 0, sizeof(PreprocessResult));
+static CleanedDocument* clean_text(const char* text, const char* source_name) {
+    CleanedDocument* result = (CleanedDocument*)malloc(sizeof(CleanedDocument));
+    memset(result, 0, sizeof(CleanedDocument));
 
     if (!text || strlen(text) == 0) {
         strcpy(result->source_name, source_name ? source_name : "unknown");
@@ -278,7 +251,6 @@ static PreprocessResult* clean_text(const char* text, const char* source_name) {
     }
 
     result->total_chars = strlen(text);
-
     int capacity = (strlen(text) / 3) + 1;
     if (capacity < 128) capacity = 128;
 
@@ -290,87 +262,49 @@ static PreprocessResult* clean_text(const char* text, const char* source_name) {
     while (pos < text_len) {
         const unsigned char* current = (const unsigned char*)(text + pos);
         int char_len = utf8_char_length(current[0]);
-
         if (char_len == 0) { pos++; continue; }
 
         int is_word = 0;
-        if (char_len == 1 && is_english_letter(current[0])) {
-            is_word = 1;
-        } else if (char_len == 3 && is_chinese_char(current)) {
-            is_word = 1;
-        }
+        if (char_len == 1 && is_english_letter(current[0])) is_word = 1;
+        else if (char_len == 3 && is_chinese_char(current)) is_word = 1;
 
-        if (!is_word) {
-            pos += char_len;
-            continue;
-        }
+        if (!is_word) { pos += char_len; continue; }
 
         int word_start = pos;
 
         if (char_len == 1 && is_english_letter(current[0])) {
-            // ---- 提取英文单词 ----
             while (pos < text_len) {
                 const unsigned char* c = (const unsigned char*)(text + pos);
                 if (!is_english_word_char(c[0])) break;
                 pos++;
             }
-
             int word_byte_len = pos - word_start;
             char* word = (char*)malloc(word_byte_len + 1);
             memcpy(word, text + word_start, word_byte_len);
             word[word_byte_len] = '\0';
-
             ascii_to_lower(word);
-
-            if (strlen(word) < (size_t)g_min_word_length) {
-                free(word);
-                continue;
-            }
-            if (is_stopword(word)) {
-                free(word);
-                continue;
-            }
-
+            if (strlen(word) < (size_t)g_min_word_length) { free(word); continue; }
+            if (is_stopword(word)) { free(word); continue; }
             int has_letter = 0;
-            for (int i = 0; word[i]; i++) {
-                if (is_english_letter((unsigned char)word[i])) {
-                    has_letter = 1;
-                    break;
-                }
-            }
-            if (!has_letter) {
-                free(word);
-                continue;
-            }
-
-            if (total_count >= capacity) {
-                capacity *= 2;
-                all_tokens = (char**)realloc(all_tokens, capacity * sizeof(char*));
-            }
+            for (int i = 0; word[i]; i++) { if (is_english_letter((unsigned char)word[i])) { has_letter = 1; break; } }
+            if (!has_letter) { free(word); continue; }
+            if (total_count >= capacity) { capacity *= 2; all_tokens = (char**)realloc(all_tokens, capacity * sizeof(char*)); }
             all_tokens[total_count++] = word;
-
         } else if (char_len == 3 && is_chinese_char(current)) {
-            // ---- 提取连续中文片段并进行分词 ----
             while (pos < text_len) {
                 const unsigned char* c = (const unsigned char*)(text + pos);
                 if (utf8_char_length(c[0]) != 3) break;
                 if (!is_chinese_char(c)) break;
                 pos += 3;
             }
-
             int chinese_byte_len = pos - word_start;
             char* chinese_seg = (char*)malloc(chinese_byte_len + 1);
             memcpy(chinese_seg, text + word_start, chinese_byte_len);
             chinese_seg[chinese_byte_len] = '\0';
-
             char** seg_tokens = NULL;
             int seg_count = segment_chinese(chinese_seg, &seg_tokens);
-
             for (int i = 0; i < seg_count; i++) {
-                if (total_count >= capacity) {
-                    capacity *= 2;
-                    all_tokens = (char**)realloc(all_tokens, capacity * sizeof(char*));
-                }
+                if (total_count >= capacity) { capacity *= 2; all_tokens = (char**)realloc(all_tokens, capacity * sizeof(char*)); }
                 all_tokens[total_count++] = seg_tokens[i];
             }
             free(seg_tokens);
@@ -380,28 +314,15 @@ static PreprocessResult* clean_text(const char* text, const char* source_name) {
 
     result->tokens = all_tokens;
     result->token_count = total_count;
-    if (source_name) {
-        strncpy(result->source_name, source_name, sizeof(result->source_name) - 1);
-    } else {
-        strcpy(result->source_name, "unknown");
-    }
+    if (source_name) strncpy(result->source_name, source_name, sizeof(result->source_name) - 1);
+    else strcpy(result->source_name, "unknown");
 
     return result;
 }
 
-// ==================== 对外接口 ====================
+// ==================== 对外接口（新命名规范） ====================
 
-MODULE1_API void enable_stopword_filter(int enable) {
-    g_enable_stopword = enable;
-    printf("[模块1] 停用词过滤已%s\n", enable ? "开启" : "关闭");
-}
-
-MODULE1_API void set_min_word_length(int length) {
-    g_min_word_length = (length < 1) ? 1 : length;
-    printf("[模块1] 最小词长已设置为 %d\n", g_min_word_length);
-}
-
-MODULE1_API PreprocessResult* load_and_preprocess_file(const char* filepath) {
+DLL_API CleanedDocument* module1_load_file(const char* filepath) {
     printf("[模块1] 正在读取文件: %s\n", filepath);
     char* content = read_file_content(filepath);
     if (!content) {
@@ -409,13 +330,13 @@ MODULE1_API PreprocessResult* load_and_preprocess_file(const char* filepath) {
         return NULL;
     }
     printf("[模块1] 文件读取成功，大小: %lld 字节\n", (long long)strlen(content));
-    PreprocessResult* result = clean_text(content, extract_filename(filepath));
+    CleanedDocument* result = clean_text(content, extract_filename(filepath));
     free(content);
     printf("[模块1] 清洗完成: 共 %d 个有效词条\n", result->token_count);
     return result;
 }
 
-MODULE1_API PreprocessResult** load_and_preprocess_folder(const char* folderpath, int* doc_count) {
+DLL_API CleanedDocument** module1_load_folder(const char* folderpath, int* doc_count) {
     printf("[模块1] 正在扫描文件夹: %s\n", folderpath);
     char search_path[512];
     snprintf(search_path, sizeof(search_path), "%s\\*.txt", folderpath);
@@ -433,14 +354,14 @@ MODULE1_API PreprocessResult** load_and_preprocess_folder(const char* folderpath
     FindClose(hFind);
     printf("[模块1] 找到 %d 个 .txt 文件\n", count);
 
-    PreprocessResult** results = (PreprocessResult**)malloc(count * sizeof(PreprocessResult*));
+    CleanedDocument** results = (CleanedDocument**)malloc(count * sizeof(CleanedDocument*));
     hFind = FindFirstFileA(search_path, &find_data);
     int index = 0;
     do {
         char filepath[512];
         snprintf(filepath, sizeof(filepath), "%s\\%s", folderpath, find_data.cFileName);
         printf("[模块1]   [%d/%d] 清洗文件: %s\n", index + 1, count, find_data.cFileName);
-        results[index] = load_and_preprocess_file(filepath);
+        results[index] = module1_load_file(filepath);
         index++;
     } while (FindNextFileA(hFind, &find_data));
     FindClose(hFind);
@@ -449,7 +370,7 @@ MODULE1_API PreprocessResult** load_and_preprocess_folder(const char* folderpath
     return results;
 }
 
-MODULE1_API PreprocessResult* open_file_dialog_and_preprocess(void) {
+DLL_API CleanedDocument* module1_open_file_dialog(void) {
     OPENFILENAMEA ofn;
     char filepath[MAX_PATH] = {0};
     ZeroMemory(&ofn, sizeof(ofn));
@@ -462,57 +383,64 @@ MODULE1_API PreprocessResult* open_file_dialog_and_preprocess(void) {
     printf("[模块1] 正在打开文件选择对话框...\n");
     if (GetOpenFileNameA(&ofn)) {
         printf("[模块1] 已选择文件: %s\n", filepath);
-        return load_and_preprocess_file(filepath);
+        return module1_load_file(filepath);
     }
     printf("[模块1] 用户取消了文件选择\n");
     return NULL;
 }
 
-MODULE1_API PreprocessResult* preprocess_text(const char* raw_text, const char* source_name) {
+DLL_API CleanedDocument* module1_clean_text(const char* raw_text, const char* source_name) {
     printf("[模块1] 直接清洗输入文本...\n");
-    PreprocessResult* result = clean_text(raw_text, source_name ? source_name : "direct_input");
+    CleanedDocument* result = clean_text(raw_text, source_name ? source_name : "direct_input");
     printf("[模块1] 清洗完成: 共 %d 个有效词条\n", result->token_count);
     return result;
 }
 
-MODULE1_API void print_cleaning_report(const PreprocessResult* result) {
-    if (!result) {
-        printf("[模块1] 错误: 结果为空\n");
-        return;
-    }
+DLL_API void module1_set_stopword_filter(int enable) {
+    g_enable_stopword = enable;
+    printf("[模块1] 停用词过滤已%s\n", enable ? "开启" : "关闭");
+}
+
+DLL_API void module1_set_min_word_length(int length) {
+    g_min_word_length = (length < 1) ? 1 : length;
+    printf("[模块1] 最小词长已设置为 %d\n", g_min_word_length);
+}
+
+DLL_API const char* module1_get_version(void) {
+    return "模块1 v2.0 - 中英文文本清洗与中文分词";
+}
+
+DLL_API void module1_print_report(const CleanedDocument* doc) {
+    if (!doc) { printf("[模块1] 错误: 文档为空\n"); return; }
     printf("\n========== 文本清洗报告 ==========\n");
-    printf("来源: %s\n", result->source_name);
-    printf("原文长度: %d 字节\n", result->total_chars);
-    printf("清洗后词条数: %d 个\n", result->token_count);
+    printf("来源: %s\n", doc->source_name);
+    printf("原文长度: %d 字节\n", doc->total_chars);
+    printf("清洗后词条数: %d 个\n", doc->token_count);
     printf("分词引擎: 基于词典的最大正向匹配 (词典: %d 词)\n", dict_size);
     printf("停用词过滤: %s\n", g_enable_stopword ? "开启" : "关闭");
     printf("最小词长: %d\n", g_min_word_length);
-    printf("\n清洗后词条列表（前30个）:\n");
-    int show_count = result->token_count < 30 ? result->token_count : 30;
-    for (int i = 0; i < show_count; i++) {
-        printf("  [%d] %s\n", i, result->tokens[i]);
-    }
-    if (result->token_count > 30) {
-        printf("  ... 共 %d 个词条\n", result->token_count);
-    }
+    printf("\n词条列表（前30个）:\n");
+    int show_count = doc->token_count < 30 ? doc->token_count : 30;
+    for (int i = 0; i < show_count; i++)
+        printf("  [%d] %s\n", i, doc->tokens[i]);
+    if (doc->token_count > 30)
+        printf("  ... 共 %d 个词条\n", doc->token_count);
     printf("==================================\n");
 }
 
-MODULE1_API void free_result(PreprocessResult* result) {
-    if (!result) return;
-    if (result->tokens) {
-        for (int i = 0; i < result->token_count; i++) {
-            free(result->tokens[i]);
-        }
-        free(result->tokens);
+DLL_API void module1_free_document(CleanedDocument* doc) {
+    if (!doc) return;
+    if (doc->tokens) {
+        for (int i = 0; i < doc->token_count; i++)
+            free(doc->tokens[i]);
+        free(doc->tokens);
     }
-    free(result);
+    free(doc);
 }
 
-MODULE1_API void free_folder_result(PreprocessResult** results, int doc_count) {
-    if (!results) return;
-    for (int i = 0; i < doc_count; i++) {
-        free_result(results[i]);
-    }
-    free(results);
+DLL_API void module1_free_documents(CleanedDocument** docs, int count) {
+    if (!docs) return;
+    for (int i = 0; i < count; i++)
+        module1_free_document(docs[i]);
+    free(docs);
 }
