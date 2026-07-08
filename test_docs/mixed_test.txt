@@ -1,0 +1,5 @@
+今天天气真好，我们去公园散步吧！这是一个测试文档。
+Mini Text Search Engine 是一个轻量文本检索工具，支持中英文混合搜索。
+Hello world! 你好世界！人工智能正在改变世界。
+数据结构与算法是计算机科学的核心课程，非常重要。
+We are learning C programming and software development.

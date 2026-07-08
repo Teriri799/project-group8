@@ -1,0 +1,3 @@
+Hello world! This is a test document for Mini Text Search Engine.
+We are learning how to build a text search tool in C language.
+This project uses DLL for modular design.
