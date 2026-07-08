@@ -1,0 +1,4 @@
+operating system process management memory scheduling file system
+kernel system call interrupt context switch virtualization
+multi threading concurrency deadlock synchronization semaphore mutex
+device driver shell terminal command line interface graphical user interface

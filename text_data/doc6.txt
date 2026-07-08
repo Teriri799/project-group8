@@ -1,0 +1,4 @@
+software development agile scrum waterfall methodology version control
+continuous integration delivery deployment devops automation testing
+requirement analysis design implementation maintenance documentation
+code review refactoring technical debt software architecture design pattern

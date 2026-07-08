@@ -1,0 +1,21 @@
+# 编译产物
+*.o
+*.exe
+*.dll
+*.moc
+*.a
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Qt 部署目录
+release/
+translations/
+
+# 临时文件
+*.log
+*.tmp
+Thumbs.db

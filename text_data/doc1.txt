@@ -1,0 +1,2 @@
+apple banana computer game book cat dog student teacher school
+Data mining text search test word frequency TF-IDF retrieval
